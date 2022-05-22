@@ -1,0 +1,67 @@
+#Кутырева Дарья Евгеньевна — для региона 79 рассчитайте урожайность пшеницы в 2013 году,
+#взяв для рассчета средние суммы активных температур за текущий год, с 14 ближайших метеостанций
+#но убирая из рассчета активных температур дни с температурой выше 30 градусов
+
+rm(list=ls())
+library(rnoaa)
+library(dplyr)
+library(ggplot2) 
+library(tidyverse)
+library(lubridate)
+
+station_data = read.csv("station_data.csv")
+#После получения всписка всех станций, извлекаем список станций ближайших к городу Биробиджан,
+#создав таблицу с именем региона и координатами его столицы
+bir = data.frame(id = "BIROBIDZAN", latitude = 48.789920,  longitude = 132.924746)
+b_around = meteo_nearby_stations(lat_lon_df = bir, station_data = station_data,
+                                 limit = 14, var = c("PRCP","TAVG"),
+                                 year_min = 2012, year_max = 2014)
+#b_around это список единственным элементом которого является таблица, содержащая идентификаторы 
+#метеостанций отсортированных по их удалленности от Биробиджана
+#Получаем данные со всех станций
+b_id = b_around[["BIROBIDZAN"]][["id"]][1]
+str(b_around)
+all_b_data = meteo_tidy_ghcnd(stationid = b_id)
+#Чтобы получить таблицу всех метеостанций вокруг Биробиджана нужно выбрать целиком первый объект из списка
+b_table = b_around[[1]]
+summary(b_table)
+#Нужно создать цикл, в котором бы скачивались  нужные данные для всех метеостанций из созданного списка
+#Создадим промежуточный объект, куда будем скачивать данные с конкретной метеостанции
+all_i = data.frame()
+#Создадим объект, куда скачаем все данные всех метеостанций
+all_b = data.frame()
+#Цикл для всех метеостанций
+for(i in 1:14) 
+{all_i  = meteo_tidy_ghcnd(stationid =  b_around[["BIROBIDZAN"]][["id"]][i])
+all_i = all_i[ ,c("id","date","tavg")] 
+print(all_i)
+all_b=rbind(all_b, all_i)}
+
+#Рассчитаем среднюю сумму активных температур для 14 метеостанций, для Еврейской автономной области  за 2013 год
+all_b$tavg[is.na(all_b$tavg)]=0
+data_b = all_b %>% 
+  mutate(date=ymd(date),
+         year=year(date),
+         month=month(date)) %>%
+  mutate(tavg=case_when(tavg<50 ~ 0,tavg>300 ~ 0, TRUE ~ tavg/10)) %>% 
+  filter (year>2012 & year < 2014) %>% 
+  group_by(id,year,month) %>% 
+  summarize(tsum = sum(tavg)) %>% 
+  group_by(month) %>% summarize(St = mean(tsum))
+
+afi=c(0.00,0.00,0.00,32.11,26.31,25.64,23.20,18.73,16.30,13.83,0.00,0.00)
+bfi=c(0.00,0.00,0.00,11.30,9.26,9.03,8.16,6.59,5.73,4.87,0.00,0.00)
+dfi=c(0.00,0.00,0.00,0.33,1.00,1.00,1.00,0.32,0.00,0.00,0.00,0.00)
+
+y=1.0
+Kf=300
+Qj=1600
+Lj=2.2
+Ej=25
+#Рассчитаем урожайность по месяцам
+data_b= data_b %>% 
+  mutate(Fi=(afi+(bfi*y*data_b$St)))
+data_b= data_b %>% mutate(Yj=(((data_b$Fi)*(dfi)*Kf)/(Qj*Lj*(100-Ej))))
+#Расчитываем суммарную урожайность как сумму по месяцам
+YIELD=sum(data_b$Yj);YIELD
+#Ответ: 16,9 ц/га
